@@ -1,0 +1,23 @@
+{
+  "name": "aws-geocode",
+  "version": "1.0.0",
+  "description": "<!-- title: 'AWS NodeJS Example' description: 'This template demonstrates how to deploy a NodeJS function running on AWS Lambda using the traditional Serverless Framework.' layout: Doc framework: v2 platform: AWS language: nodeJS priority: 1 authorLink: 'https://github.com/serverless' authorName: 'Serverless, inc.' authorAvatar: 'https://avatars1.githubusercontent.com/u/13742415?s=200&v=4' -->",
+  "main": "handler.js",
+  "dependencies": {
+    "exceljs": "^4.3.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "node handler.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CJKeller03/aws-geocode.git"
+  },
+  "author": "Caleb Keller",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/CJKeller03/aws-geocode/issues"
+  },
+  "homepage": "https://github.com/CJKeller03/aws-geocode#readme"
+}

@@ -12,8 +12,8 @@ provider:
 
 functions:
   geocode:
-    handler: handler.hello
+    handler: handler.geocode
     events:
       - httpApi:
-          method: get
+          method: post
           path: /geocode

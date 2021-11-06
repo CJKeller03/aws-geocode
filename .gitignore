@@ -4,5 +4,6 @@ jspm_packages
 
 # Serverless directories
 .serverless
+
+# Project-specific
 event.json
-TestFile.xlsx

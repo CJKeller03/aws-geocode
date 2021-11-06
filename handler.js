@@ -24,20 +24,39 @@ module.exports.geocode = async (event) => {
       }
     }
   }
+  
+  const sheet = reader.worksheets[0];
+  var addresses;
+  var requirements;
+  var meta = new Map();
 
-  reader.worksheets[0].columns = [
-    {header: 'address', key: 'Address'},
-    {header: "name", key: "Name"},
-    {header: "request", key: "Request"}
-  ];
+  sheet.getRow(1).eachCell(function(cell, colNumber) {
+    switch (cell.value.toLowerCase()) {
+      case "address": {
+        addresses = sheet.getColumn(colNumber).values.slice(2);
+        break;
+      }
+      case "request": {
+        requirements = sheet.getColumn(colNumber).values.slice(2);
+        break;
+      }
+      default: {
+        meta.set(cell.value, sheet.getColumn(colNumber).values.slice(2));
+      }
+    }
+  });
 
-  var addresses = reader.worksheets[0].getColumn("Address").values;
-  var requirement = reader.worksheets[0].getColumn("Request").values;
-  var meta = [];
+  if (addresses == undefined || requirements == undefined) {
+    return {
+      statusCode: 400,
+      body: "Address or Request field missing"
+    }
+  }
 
   return {
     statusCode: 200,
-    body: JSON.stringify({"addresses" : addresses, "req" : requirement})
+    body: JSON.stringify({"addresses" : addresses, "req" : requirements, "meta" : Array.from(meta)})
+    
   }
   
 }

@@ -1,5 +1,6 @@
 'use strict';
 const Excel = require('exceljs');
+const got = require('got');
 
 module.exports.geocode = async (event) => {
 
@@ -53,9 +54,47 @@ module.exports.geocode = async (event) => {
     }
   }
 
+  var coordinates = [];
+  var batchSize = 5;
+
+  for(let curAddr = 0; curAddr < addresses.length; curAddr += batchSize) {
+    var batch = addresses.slice(curAddr, curAddr + batchSize);
+    var requestArr = [];
+    batch.forEach((addr, index) => {
+      requestArr.push({
+        "attributes": {
+          "OBJECTID": curAddr + index,
+          "SingleLine": addr
+        }
+      })
+    })
+
+    
+    try {
+      const response = await got.post('https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/geocodeAddresses', {
+        form: {
+          "addresses": JSON.stringify({
+            "records": requestArr
+          })
+        },
+        responseType: 'json',
+        searchParams: {
+          'token': 'AAPK9f9894d7f5da40249a238423d36829734dNROM2FV5rVV--7jT1-2e5qM-2St42-TMw9jWfMIqjatsyfclLsVGurAKsbgVcT',
+          'f': 'json',
+          'outfields': 'none'
+        }
+      }).json();
+      coordinates.push(...response.locations);
+    } catch (error) {
+      coordinates.push(error);
+    }
+    
+  }
+
+
   return {
     statusCode: 200,
-    body: JSON.stringify({"addresses" : addresses, "req" : requirements, "meta" : Array.from(meta)})
+    body: JSON.stringify(coordinates)
     
   }
   

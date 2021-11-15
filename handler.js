@@ -4,7 +4,10 @@ const got = require('got');
 
 module.exports.geocode = async (event) => {
 
-  var reader;
+  const ignoreFail = event.headers["Ignore-Failed"];
+  const custID = event.headers["Customer-ID"];
+
+  let reader;
   switch(event.headers["content-type"]) {
     case 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {
       reader = new Excel.Workbook();
@@ -27,9 +30,9 @@ module.exports.geocode = async (event) => {
   }
   
   const sheet = reader.worksheets[0];
-  var addresses;
-  var requirements;
-  var meta = new Map();
+  let addresses;
+  let requirements;
+  let meta = new Map();
 
   sheet.getRow(1).eachCell(function(cell, colNumber) {
     switch (cell.value.toLowerCase()) {
@@ -54,16 +57,19 @@ module.exports.geocode = async (event) => {
     }
   }
 
-  var coordinates = [];
-  var batchSize = 5;
+  let batchSize = 5;
+  let coordinates = new Map();
+  let fails = [];
 
   for(let curAddr = 0; curAddr < addresses.length; curAddr += batchSize) {
-    var batch = addresses.slice(curAddr, curAddr + batchSize);
-    var requestArr = [];
+    let batch = addresses.slice(curAddr, curAddr + batchSize);
+    let requestArr = [];
+
+    // Build the required request structure
     batch.forEach((addr, index) => {
       requestArr.push({
         "attributes": {
-          "OBJECTID": curAddr + index,
+          "OBJECTID": index,
           "SingleLine": addr
         }
       })
@@ -71,6 +77,7 @@ module.exports.geocode = async (event) => {
 
     
     try {
+      // send the request to the geocoding server
       const response = await got.post('https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/geocodeAddresses', {
         form: {
           "addresses": JSON.stringify({
@@ -81,20 +88,39 @@ module.exports.geocode = async (event) => {
         searchParams: {
           'token': 'AAPK9f9894d7f5da40249a238423d36829734dNROM2FV5rVV--7jT1-2e5qM-2St42-TMw9jWfMIqjatsyfclLsVGurAKsbgVcT',
           'f': 'json',
-          'outfields': 'none'
+          'outfields': 'none',
+          'category': 'Street Address'
         }
       }).json();
-      coordinates.push(...response.locations);
+
+      // parse the response into a map
+      response.locations.forEach((coord) => {
+        if (coord.location !== undefined) {
+          coordinates.set(batch[coord.attributes.ResultID], coord.location);
+        } else if (ignoreFail) {
+          fails.push(batch[coord.attributes.ResultID]);
+        }
+      })
     } catch (error) {
-      coordinates.push(error);
+      return {
+        statusCode: 400,
+        body: error.message
+      }
     }
     
+  }
+
+  if (fails.length > 0) {
+    return {
+      statusCode: 400,
+      body: "Unable to find location for: " + JSON.stringify(fails)
+    }
   }
 
 
   return {
     statusCode: 200,
-    body: JSON.stringify(coordinates)
+    body: JSON.stringify(Array.from(coordinates))
     
   }
   

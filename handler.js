@@ -2,6 +2,39 @@
 const Excel = require('exceljs');
 const got = require('got');
 
+const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
+// Set the AWS Region.
+const REGION = "us-east-2"; //e.g. "us-east-1"
+// Create an Amazon DynamoDB service client object.
+const { PutItemCommand } = require("@aws-sdk/client-dynamodb");
+const { GetItemCommand } = require("@aws-sdk/client-dynamodb");
+const ddbClient = new DynamoDBClient({ region: REGION });
+//export { ddbClient };
+
+const tableName = process.env.TABLE_NAME
+
+async function put(data) {
+    await ddbClient.send(new PutItemCommand({
+        TableName: tableName,
+        Item: {
+          custID: {S: "ABC"},
+          projID: {S: "123a"},
+          expiration: {N: (Math.floor(Date.now() / 1000) + 60).toString()}
+        }
+    }));
+}
+
+async function get(key) {
+    return await ddbClient.send(new GetItemCommand({
+        TableName: tableName,
+        Key: {
+          custID: {S: "ABC"},
+          projID: {S: "123a"}
+        },
+        ProjectionExpression: "expriation",
+    }));
+}
+
 module.exports.geocode = async (event) => {
 
   const ignoreFail = event.headers["Ignore-Failed"];
@@ -89,7 +122,7 @@ module.exports.geocode = async (event) => {
           'token': 'AAPK9f9894d7f5da40249a238423d36829734dNROM2FV5rVV--7jT1-2e5qM-2St42-TMw9jWfMIqjatsyfclLsVGurAKsbgVcT',
           'f': 'json',
           'outfields': 'none',
-          'category': 'Street Address'
+          'category': 'Point Address, Street Address'
         }
       }).json();
 
@@ -117,11 +150,12 @@ module.exports.geocode = async (event) => {
     }
   }
 
+  await put({});
+  var data = await get({});
 
   return {
     statusCode: 200,
-    body: JSON.stringify(Array.from(coordinates))
-    
+    body: JSON.stringify(data)
   }
   
 }

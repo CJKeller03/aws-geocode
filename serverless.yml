@@ -7,9 +7,26 @@ frameworkVersion: '2'
 
 provider:
   name: aws
-  runtime: nodejs12.x
+  runtime: nodejs14.x
   lambdaHashingVersion: 20201221
   region: us-east-2
+  environment:
+    TABLE_NAME:
+      Ref: coordinateMap
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:DescribeTable
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource:
+        - "Fn::GetAtt": [coordinateMap, Arn]
+
+
 
 functions:
   geocode:
@@ -18,3 +35,26 @@ functions:
       - httpApi:
           method: post
           path: /geocode
+
+resources:
+  Resources:
+    coordinateMap:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: coordinateMap
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: custID
+            AttributeType: S
+          - AttributeName: projID
+            AttributeType: S
+        KeySchema:
+          - AttributeName: custID
+            KeyType: HASH
+          - AttributeName: projID
+            KeyType: RANGE
+        TimeToLiveSpecification:
+          AttributeName: expiration
+          Enabled: true
+
+

@@ -5,6 +5,7 @@
   "main": "handler.js",
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.42.0",
+    "@aws-sdk/lib-dynamodb": "^3.42.0",
     "exceljs": "^4.3.0",
     "got": "^11.8.2"
   },

@@ -13,6 +13,7 @@ provider:
   environment:
     TABLE_NAME:
       Ref: coordinateMap
+    ARCGIS_KEY: ${ssm:ArcGIS-Geocoding}
   iamRoleStatements:
     - Effect: Allow
       Action:

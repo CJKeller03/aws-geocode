@@ -2,43 +2,59 @@
 const Excel = require('exceljs');
 const got = require('got');
 
-const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
-// Set the AWS Region.
-const REGION = "us-east-2"; //e.g. "us-east-1"
-// Create an Amazon DynamoDB service client object.
-const { PutItemCommand } = require("@aws-sdk/client-dynamodb");
-const { GetItemCommand } = require("@aws-sdk/client-dynamodb");
-const ddbClient = new DynamoDBClient({ region: REGION });
-//export { ddbClient };
+const { DynamoDB } = require("@aws-sdk/client-dynamodb");
+const { DynamoDBDocument } = require("@aws-sdk/lib-dynamodb");
 
-const tableName = process.env.TABLE_NAME
+const marshallOptions = {
+  // Whether to automatically convert empty strings, blobs, and sets to `null`.
+  convertEmptyValues: false, // false, by default.
+  // Whether to remove undefined values while marshalling.
+  removeUndefinedValues: false, // false, by default.
+  // Whether to convert typeof object to map attribute.
+  convertClassInstanceToMap: true, // false, by default.
+};
 
-async function put(data) {
-    await ddbClient.send(new PutItemCommand({
-        TableName: tableName,
-        Item: {
-          custID: {S: "ABC"},
-          projID: {S: "123a"},
-          expiration: {N: (Math.floor(Date.now() / 1000) + 60).toString()}
-        }
-    }));
+const unmarshallOptions = {
+  // Whether to return numbers as a string instead of converting them to native JavaScript numbers.
+  wrapNumbers: false, // false, by default.
+};
+
+const translateConfig = { marshallOptions, unmarshallOptions };
+
+const ddbClient = DynamoDBDocument.from(new DynamoDB({}), translateConfig);
+
+const tableName = process.env.TABLE_NAME;
+const ARCGIS_KEY = process.env.ARCGIS_KEY;
+
+async function put(custID, projID, map) {
+  //console.log(custID + " " + projID);
+  await ddbClient.put({
+      TableName: tableName,
+      Item: {
+        custID: custID,
+        projID: projID,
+        coordinateMap: map,
+        expiration: Math.floor(Date.now() / 1000) + 300
+      }
+  });
 }
 
-async function get(key) {
-    return await ddbClient.send(new GetItemCommand({
-        TableName: tableName,
-        Key: {
-          custID: {S: "ABC"},
-          projID: {S: "123a"}
-        },
-        ProjectionExpression: "expriation",
-    }));
+async function get(custID, projID) {
+  //console.log(custID + " " + projID);
+  return await ddbClient.get({
+      TableName: tableName,
+      Key: {
+        custID: custID,
+        projID: projID
+      },
+      ProjectionExpression: "coordinateMap"
+  });
 }
 
 module.exports.geocode = async (event) => {
 
-  const ignoreFail = event.headers["Ignore-Failed"];
-  const custID = event.headers["Customer-ID"];
+  const ignoreFail = event.headers["ignore-failed"];
+  const custID = event.headers["customer-id"];
 
   let reader;
   switch(event.headers["content-type"]) {
@@ -90,57 +106,34 @@ module.exports.geocode = async (event) => {
     }
   }
 
-  let batchSize = 5;
-  let coordinates = new Map();
   let fails = [];
 
-  for(let curAddr = 0; curAddr < addresses.length; curAddr += batchSize) {
-    let batch = addresses.slice(curAddr, curAddr + batchSize);
-    let requestArr = [];
+  var tmp = get(custID, "123");
+  let coordMap = tmp.Item == undefined? {}: tmp.Item;
 
-    // Build the required request structure
-    batch.forEach((addr, index) => {
-      requestArr.push({
-        "attributes": {
-          "OBJECTID": index,
-          "SingleLine": addr
-        }
-      })
-    })
-
-    
-    try {
-      // send the request to the geocoding server
-      const response = await got.post('https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/geocodeAddresses', {
-        form: {
-          "addresses": JSON.stringify({
-            "records": requestArr
-          })
-        },
-        responseType: 'json',
-        searchParams: {
-          'token': 'AAPK9f9894d7f5da40249a238423d36829734dNROM2FV5rVV--7jT1-2e5qM-2St42-TMw9jWfMIqjatsyfclLsVGurAKsbgVcT',
-          'f': 'json',
-          'outfields': 'none',
-          'category': 'Point Address, Street Address'
-        }
-      }).json();
-
-      // parse the response into a map
-      response.locations.forEach((coord) => {
-        if (coord.location !== undefined) {
-          coordinates.set(batch[coord.attributes.ResultID], coord.location);
-        } else if (ignoreFail) {
-          fails.push(batch[coord.attributes.ResultID]);
-        }
-      })
-    } catch (error) {
-      return {
-        statusCode: 400,
-        body: error.message
+  let responses = addresses.filter(addr => !coordMap.hasOwnProperty(addr)).map((addr) => {
+    // send the request to the geocoding server
+    return [got.get('https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates', {
+      responseType: 'json',
+      searchParams: {
+        'token': ARCGIS_KEY,
+        'f': 'json',
+        'outfields': 'none',
+        'forStorage': 'false',
+        'address': addr,
+        'category': 'Point Address, Street Address'
       }
+    }).json(), addr];
+  });
+
+  for(let [promise, addr] of responses) {
+    let res = await promise;
+    let loc = res.candidates[0].location;
+    if (loc != undefined) {
+      coordMap[addr] = loc;
+    } else {
+      fails.push(addr);
     }
-    
   }
 
   if (fails.length > 0) {
@@ -150,8 +143,9 @@ module.exports.geocode = async (event) => {
     }
   }
 
-  await put({});
-  var data = await get({});
+  await put(custID, "123", coordMap);
+  var data = await get(custID, "123");
+
 
   return {
     statusCode: 200,

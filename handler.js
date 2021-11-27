@@ -26,9 +26,9 @@ const ddbClient = DynamoDBDocument.from(new DynamoDB({}), translateConfig);
 const tableName = process.env.TABLE_NAME;
 const ARCGIS_KEY = process.env.ARCGIS_KEY;
 
-async function put(custID, projID, map) {
+function put(custID, projID, map) {
   //console.log(custID + " " + projID);
-  await ddbClient.put({
+  ddbClient.put({
       TableName: tableName,
       Item: {
         custID: custID,
@@ -39,9 +39,9 @@ async function put(custID, projID, map) {
   });
 }
 
-async function get(custID, projID) {
+function get(custID, projID) {
   //console.log(custID + " " + projID);
-  return await ddbClient.get({
+  return ddbClient.get({
       TableName: tableName,
       Key: {
         custID: custID,
@@ -55,6 +55,14 @@ module.exports.geocode = async (event) => {
 
   const ignoreFail = event.headers["ignore-failed"];
   const custID = event.headers["customer-id"];
+  const projID = event.headers["project-id"];
+
+  if (custID == undefined || projID == undefined) {
+    return {
+      statusCode: 400,
+      body: "Missing customer or project ID"
+    }
+  }
 
   let reader;
   switch(event.headers["content-type"]) {
@@ -108,12 +116,12 @@ module.exports.geocode = async (event) => {
 
   let fails = [];
 
-  var tmp = get(custID, "123");
-  let coordMap = tmp.Item == undefined? {}: tmp.Item;
+  var tmp = await get(custID, projID);
+  let coordMap = tmp.Item == undefined? {}: tmp.Item.coordinateMap;
 
-  let responses = addresses.filter(addr => !coordMap.hasOwnProperty(addr)).map((addr) => {
+  await Promise.all(addresses.filter(addr => !coordMap.hasOwnProperty(addr)).map(async (addr) => {
     // send the request to the geocoding server
-    return [got.get('https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates', {
+    let res = await got.get('https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates', {
       responseType: 'json',
       searchParams: {
         'token': ARCGIS_KEY,
@@ -123,33 +131,28 @@ module.exports.geocode = async (event) => {
         'address': addr,
         'category': 'Point Address, Street Address'
       }
-    }).json(), addr];
-  });
+    }).json();
 
-  for(let [promise, addr] of responses) {
-    let res = await promise;
     let loc = res.candidates[0].location;
     if (loc != undefined) {
       coordMap[addr] = loc;
     } else {
       fails.push(addr);
     }
-  }
+  }));
 
-  if (fails.length > 0) {
+  if (fails.length > 0 && !ignoreFail) {
     return {
       statusCode: 400,
       body: "Unable to find location for: " + JSON.stringify(fails)
     }
   }
 
-  await put(custID, "123", coordMap);
-  var data = await get(custID, "123");
-
+  put(custID, projID, coordMap);
 
   return {
     statusCode: 200,
-    body: JSON.stringify(data)
+    body: JSON.stringify(coordMap)
   }
   
 }
